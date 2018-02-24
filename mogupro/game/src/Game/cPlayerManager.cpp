@@ -11,6 +11,7 @@
 #include <Resource/cImageManager.h>
 #include <Network/cUDPClientManager.h>
 #include <Game/Weapons/MainWeapon/cBase.h>
+#include <Game/cShaderManager.h>
 void Game::cPlayerManager::receiveAddCannonPower(int playerId)
 {
 	if (playerId != active_player_id)
@@ -20,20 +21,20 @@ void Game::cPlayerManager::receiveAddCannonPower(int playerId)
 		players[playerId]->getgems.clear();
 	}
 }
-void Game::cPlayerManager::playerInstance(std::vector<ci::vec3> positions, const int& player_number, const int& active_player_id, std::vector<int> teams)
+void Game::cPlayerManager::playerInstance(std::vector<ci::vec3> positions, const int& player_number, const int& active_player_id, std::vector<int> teams, std::vector<std::string> const& names)
 {
 	//生成
 	for (int i = 0; i < player_number; i++) {
 		//通信で代入
 		if (i == active_player_id) {
-			players.push_back(std::make_shared<Player::cPlayer>(positions[i], i, true, 0, 0, static_cast<Game::Player::Team>(teams[i])));
+			players.push_back(std::make_shared<Player::cPlayer>(positions[i], i, true, 0, 0, static_cast<Game::Player::Team>(teams[i]), names[i]));
 			//アクティブユーザに代入
 			active_player = players[i];
 			this->active_player_id = active_player_id;
 			this->active_player_team_id = teams[i];
 		}
 		else {
-			players.push_back(std::make_shared<Player::cPlayer>(positions[i], i, false, 0, 0, static_cast<Game::Player::Team>(teams[i])));
+			players.push_back(std::make_shared<Player::cPlayer>(positions[i], i, false, 0, 0, static_cast<Game::Player::Team>(teams[i]), names[i]));
 		}
 	}
 }
@@ -100,11 +101,11 @@ ci::vec3 Game::cPlayerManager::playerNormalMoveKey(const float& delta_time)
 
 	if ( active_player->isWatching( ) )
 	{
-		if ( ENV->pressKey( ci::app::KeyEvent::KEY_LSHIFT ) ) {
+		if ( ENV->pressKey( ci::app::KeyEvent::KEY_LSHIFT ) || ENV->isPadPress(4) ) {
 			keybord_velocity.y = -active_player->getSpeed( );
 		}
 
-		if ( ENV->pressKey( ci::app::KeyEvent::KEY_SPACE ) ) {
+		if ( ENV->pressKey( ci::app::KeyEvent::KEY_SPACE ) || ENV->isPadPress(5) ) {
 			keybord_velocity.y = active_player->getSpeed( );
 		}
 	}
@@ -131,14 +132,23 @@ ci::vec3 Game::cPlayerManager::playerNormalMoveKey(const float& delta_time)
 }
 ci::vec3 Game::cPlayerManager::playerNormalMovePad(const float & delta_time)
 {
-	ci::vec3 pad_velocity = ci::vec3(0);
+	ci::vec3 spd;
 
-	float x_axis = -(100 * ENV->getPadAxis(0) * delta_time * active_player->getSpeed());
-	float z_axis = -(100 * ENV->getPadAxis(1) * delta_time * active_player->getSpeed());
+	spd.x = -ENV->getPadAxis(0);
+	spd.z = -ENV->getPadAxis(1);
 
-	pad_velocity += ci::vec3(z_axis*sin(CAMERA->getCameraAngle().x), 0.0f, z_axis*cos(CAMERA->getCameraAngle().x));
-	pad_velocity += ci::vec3(x_axis*cos(CAMERA->getCameraAngle().x), 0.0f, -x_axis*sin(CAMERA->getCameraAngle().x));
-	return pad_velocity;
+	if (glm::length(spd) > 1.0F)
+	{
+		spd = glm::normalize(spd);
+	}
+
+	auto q = glm::angleAxis(CAMERA->getCameraAngle().x, glm::vec3(0, 1, 0));
+
+	spd = glm::rotate(q, spd);
+
+	spd *= active_player->getSpeed();
+
+	return spd;
 }
 void Game::cPlayerManager::playerMove(const float & delta_time)
 {
@@ -157,10 +167,10 @@ void Game::cPlayerManager::playerMove(const float & delta_time)
 	//カメラ移動
 	if (!active_player->isDead()) {
 		if (!getActivePlayer()->isDrilling()) {
-			CAMERA->addCameraAngle(ci::vec2(ENV->getPadAxis(4)*(-0.1f), ENV->getPadAxis(3)*(-0.1f)));
+			CAMERA->addCameraAngle(ci::vec2(ENV->getPadAxis(4)*(-0.025f), ENV->getPadAxis(3)*(-0.025f)));
 		}
 		else {
-			CAMERA->addCameraAngle(ci::vec2(ENV->getPadAxis(0)*(-0.1f), ENV->getPadAxis(1)*(-0.1f)));
+			CAMERA->addCameraAngle(ci::vec2(ENV->getPadAxis(0)*(-0.025f), ENV->getPadAxis(1)*(-0.025f)));
 		}
 	}
 	// ターゲットがいたらプレイヤーは動けません。
@@ -169,7 +179,7 @@ void Game::cPlayerManager::playerMove(const float & delta_time)
 	//プレイヤーが死んでいたらカメラ以外操作不能
 	if (active_player->isDead())return;
 
-	CAMERA->addCameraAngle(ci::vec2(ENV->getPadAxis(4)*(-0.07f), ENV->getPadAxis(3)*(-0.07f)));
+	CAMERA->addCameraAngle(ci::vec2(ENV->getPadAxis(4)*(-0.025f), ENV->getPadAxis(3)*(-0.025f)));
 	
 	//大砲にジェムを入れる
 	auto cannon = cStrategyManager::getInstance()->getCannons()[static_cast<Player::Team>(active_player->getWhichTeam())];
@@ -392,30 +402,37 @@ void Game::cPlayerManager::watchingCamera( const float & delta_time )
 	if ( !isActivePlayerWatching( ) ) return;
 	if ( ENV->pushKey( ci::app::KeyEvent::KEY_1 ) )
 	{
+		CAMERA->setCameraMode(CameraManager::TPS);
 		watching_target_player_id = 0;
 	}
 	else if ( ENV->pushKey( ci::app::KeyEvent::KEY_2 ) )
 	{
+		CAMERA->setCameraMode(CameraManager::TPS);
 		watching_target_player_id = 1;
 	}
 	else if ( ENV->pushKey( ci::app::KeyEvent::KEY_3 ) )
 	{
+		CAMERA->setCameraMode(CameraManager::TPS);
 		watching_target_player_id = 2;
 	}
 	else if ( ENV->pushKey( ci::app::KeyEvent::KEY_4 ) )
 	{
+		CAMERA->setCameraMode(CameraManager::TPS);
 		watching_target_player_id = 4; // 3は観戦者
 	}
 	else if ( ENV->pushKey( ci::app::KeyEvent::KEY_5 ) )
 	{
+		CAMERA->setCameraMode(CameraManager::TPS);
 		watching_target_player_id = 5;
 	}
 	else if ( ENV->pushKey( ci::app::KeyEvent::KEY_6 ) )
 	{
+		CAMERA->setCameraMode(CameraManager::TPS);
 		watching_target_player_id = 6;
 	}
-	else if ( ENV->pushKey( ci::app::KeyEvent::KEY_ESCAPE ) )
+	else if ( ENV->pushKey( ) )
 	{
+		CAMERA->setCameraMode(CameraManager::FPS);
 		watching_target_player_id = -1;
 	}
 	// 7は観戦者
@@ -462,9 +479,9 @@ void Game::cPlayerManager::cameraAfterUpdate( const float & delta_time )
 		it->cameraAfterUpdate( delta_time );
 	}
 }
-void Game::cPlayerManager::setup(std::vector<ci::vec3> positions, const int& player_number, const int& active_player_id, std::vector<int> teams)
+void Game::cPlayerManager::setup(std::vector<ci::vec3> positions, const int& player_number, const int& active_player_id, std::vector<int> teams, std::vector<std::string> const& names)
 {
-	playerInstance(positions, player_number, active_player_id, teams);
+	playerInstance(positions, player_number, active_player_id, teams, names);
 	//ポジションの参照とカメラのズームを設定
 	for (auto& it : players) {
 		it->setup();
@@ -495,4 +512,7 @@ void Game::cPlayerManager::draw()
 	for (auto& it : players) {
 		it->draw();
 	}
+
+	// ////////////ライトの反映解除
+	cShaderManager::getInstance()->uniformUpdate();
 }

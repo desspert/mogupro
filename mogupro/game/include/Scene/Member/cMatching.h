@@ -6,17 +6,27 @@
 #include <Node/renderer.hpp>
 #include <Utility/TriMeshAnimation.h>
 #include <cinder/gl/Fbo.h>
-
+#include <Sound/cIntroLoopableBGM.h>
 class DrillUI
 {
 public:
 
 	DrillUI();
-	DrillUI(ci::vec2 pos, ci::vec2 moveVec, std::string name);
+	DrillUI(ci::vec2 pos,ci::vec2 fontPos, ci::vec2 moveVec, std::string name);
 
 	void update(float deltaTime);
 	void draw();
 	hardptr<Node::node> mRoot;
+	int animationTime;
+	float time;
+	enum AnimationType
+	{
+		NONE,
+		BEGIN,
+		END
+	};
+	AnimationType type;
+	ci::vec2 firePosition;
 };
 
 class Star
@@ -58,7 +68,7 @@ private:
 		CLIENT,
 		NOT
 	};
-
+	bool flag = false;
 	ClassState mClassState;
 	ClassState mWaitClassState;
 	enum class PhaseState
@@ -67,7 +77,7 @@ private:
 		IN_ROOM,
 		BEGIN_GAME
 	};
-
+	Sound::cIntroLoopableBGM introloopBGM;
 	PhaseState mPhaseState;
 
 	bool mCanSend;
@@ -81,6 +91,8 @@ private:
 	int mPrevSelectTag;
 	std::vector<std::function<void()>> outRoomFunc;
 	std::vector<std::function<void()>> inRoomFunc;
+	bool canSendInRoom;
+	bool canStartUpdateServer;
 
 	bool mBeginAnimation;
 	bool mIsEndAnimation;

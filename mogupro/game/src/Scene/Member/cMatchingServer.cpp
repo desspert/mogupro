@@ -38,7 +38,10 @@ namespace Scene
 		}
 		void cMatchingServer::shutDown()
 		{
-
+			Game::cServerAdapter::getInstance()->removeInstance();
+			cMatchingMemberManager::removeInstance();
+			cUDPServerManager::getInstance()->close();
+			cUDPServerManager::removeInstance();
 		}
 
 		void cMatchingServer::update(float deltaTime)
@@ -176,12 +179,12 @@ namespace Scene
 				auto team = cMatchingMemberManager::getInstance( )->whatTeam( reqWantTeamIn->mNetworkHandle );
  				if (cMatchingMemberManager::getInstance()->whatTeam( reqWantTeamIn->mNetworkHandle) == -1)
 				{
-					cUDPServerManager::getInstance()->send(reqWantTeamIn->mNetworkHandle, new cResWantTeamIn(0, -1));
+					cUDPServerManager::getInstance()->send(reqWantTeamIn->mNetworkHandle, new cResWantTeamIn(0, -1,0));
 					continue;
 				}
 
 				++teamCount;
-				cUDPServerManager::getInstance()->send(reqWantTeamIn->mNetworkHandle, new cResWantTeamIn(1, team ));
+
 				//V‹K’Ç‰Á‚µ‚½Player‚Ìî•ñŽæ“¾
 				std::string newPlayerStr;
 				int newPlayerID;
@@ -192,6 +195,8 @@ namespace Scene
 					newPlayerID = m.playerID;
 				}
 
+				cUDPServerManager::getInstance()->send(reqWantTeamIn->mNetworkHandle, new cResWantTeamIn(1, team ,newPlayerID));
+				
 				int count = 0;
 				for (auto& m : cMatchingMemberManager::getInstance()->mPlayerDatas)
 				{
@@ -234,14 +239,26 @@ namespace Scene
 
 		void cMatchingServer::resetMember()
 		{
-			if (!ENV->pushKey(ci::app::KeyEvent::KEY_SPACE))return;
-
-			mPhaseState = PhaseState::NOT_IN_ROOM;
-			mOpenRoom = false;
-			mIsGameUpdate = false;
-			cMatchingMemberManager::removeInstance();
-			cUDPServerManager::getInstance()->close();
-			cUDPServerManager::getInstance()->open();
+			bool isReset = false;
+			for (auto& m : Network::cUDPServerManager::getInstance()->getUDPManager())
+			while (auto req = m->ReqGameEnd.get())
+			{
+				isReset = true;
+			}
+			if (ENV->pushKey(ci::app::KeyEvent::KEY_SPACE))
+			{
+				isReset = true;
+			}
+			if(isReset)
+			{
+				mPhaseState = PhaseState::NOT_IN_ROOM;
+				mOpenRoom = false;
+				mIsGameUpdate = false;
+				Game::cServerAdapter::getInstance()->removeInstance();
+				cMatchingMemberManager::removeInstance();
+				cUDPServerManager::getInstance()->close();
+				cUDPServerManager::getInstance()->open();
+			}
 		}
 		void cMatchingServer::draw()
 		{

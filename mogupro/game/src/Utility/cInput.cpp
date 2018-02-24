@@ -2,6 +2,7 @@
 #include <cinder/app/App.h>
 #include <Node/action.hpp>
 #include <CameraManager/cCameraManager.h>
+#include <cinder/Utilities.h>
 
 extern "C"
 {
@@ -25,6 +26,16 @@ cInputAll::cInputAll( )
 }
 void cInputAll::setMouseControl( const bool & flag )
 {
+	if (flag)
+	{
+		while (::ShowCursor(false) >= 0)
+			;
+	}
+	else
+	{
+		while (::ShowCursor(true) < 0)
+			;
+	}
 	mouse_active = flag;
 }
 void cInputAll::disableMouseButton( )
@@ -50,6 +61,10 @@ void cInputAll::disablePadButton( )
 void cInputAll::enablePadButton( )
 {
 	padState.enable( );
+}
+bool cInputAll::isEnabledPadButton()
+{
+	return padState.isEnabled( );
 }
 void cInputAll::disablePadAxis( )
 {
@@ -81,15 +96,15 @@ bool cInputAll::pullKey( const int & pressed_key )
 }
 bool cInputAll::pressKey( )
 {
-	return keyState.press( ) || mouseState.press( );
+	return keyState.press( ) || mouseState.press( ) || padState.press( );
 }
 bool cInputAll::pushKey( )
 {
-	return keyState.push( ) || mouseState.push( );
+	return keyState.push( ) || mouseState.push( ) || padState.push();
 }
 bool cInputAll::pullKey( )
 {
-	return keyState.pull( ) || mouseState.pull( );
+	return keyState.pull( ) || mouseState.pull( ) || padState.pull();
 }
 bool cInputAll::isPadPush( const int & num )
 {
@@ -113,6 +128,11 @@ void cInputAll::setMouseCursorAvtive(bool flag)
 float cInputAll::getPadAxis( const int & pad_num )
 {
 	if ( !usePadAxis ) return 0.0F;
+	if (blockPadDrillButton)
+	{
+		// 移動キー、掘るAxisのみブロック。
+		if (pad_num < 3) return 0.0F;
+	}
 	if ( pad_stick_axis_value.find( pad_num ) == pad_stick_axis_value.cend( ) )
 		return 0.0f;
 
@@ -125,6 +145,13 @@ float cInputAll::getPadAxis( const int & pad_num )
 
 bool cInputAll::getPadAxisPushPlus(const int & pad_num)
 {
+	if (!usePadAxis) return false;
+	if (blockPadDrillButton)
+	{
+		// 移動キー、掘るAxisのみブロック。
+		if (pad_num < 3) return false;
+	}
+
 	//キーが無ければ初期化
 	if (pad_axis_value_buf.count(pad_num) == 0) {
 		pad_axis_value_buf[pad_num] = 0.0f;
@@ -143,6 +170,13 @@ bool cInputAll::getPadAxisPushPlus(const int & pad_num)
 
 bool cInputAll::getPadAxisPullPlus(const int & pad_num)
 {
+	if (!usePadAxis) return false;
+	if (blockPadDrillButton)
+	{
+		// 移動キー、掘るAxisのみブロック。
+		if (pad_num < 3) return false;
+	}
+
 	//キーが無ければ初期化
 	if (pad_axis_value_buf.count(pad_num) == 0) {
 		pad_axis_value_buf[pad_num] = 0.0f;
@@ -162,6 +196,13 @@ bool cInputAll::getPadAxisPullPlus(const int & pad_num)
 
 bool cInputAll::getPadAxisPressPlus(const int & pad_num)
 {
+	if (!usePadAxis) return false;
+	if (blockPadDrillButton)
+	{
+		// 移動キー、掘るAxisのみブロック。
+		if (pad_num < 3) return false;
+	}
+
 	//キーが無ければ初期化
 	if (pad_axis_value_buf.count(pad_num) == 0) {
 		pad_axis_value_buf[pad_num] = 0.0f;
@@ -181,6 +222,13 @@ bool cInputAll::getPadAxisPressPlus(const int & pad_num)
 
 bool cInputAll::getPadAxisPushMinus(const int & pad_num)
 {
+	if (!usePadAxis) return false;
+	if (blockPadDrillButton)
+	{
+		// 移動キー、掘るAxisのみブロック。
+		if (pad_num < 3) return false;
+	}
+
 	//キーがプラスと被らないように１０を足す
 	int buf = pad_num + 10;
 	//キーが無ければ初期化
@@ -201,6 +249,13 @@ bool cInputAll::getPadAxisPushMinus(const int & pad_num)
 
 bool cInputAll::getPadAxisPullMinus(const int & pad_num)
 {
+	if (!usePadAxis) return false;
+	if (blockPadDrillButton)
+	{
+		// 移動キー、掘るAxisのみブロック。
+		if (pad_num < 3) return false;
+	}
+
 	//キーがプラスと被らないように１０を足す
 	int buf = pad_num + 10;
 	//キーが無ければ初期化
@@ -222,6 +277,13 @@ bool cInputAll::getPadAxisPullMinus(const int & pad_num)
 
 bool cInputAll::getPadAxisPressMinus(const int & pad_num)
 {
+	if (!usePadAxis) return false;
+	if (blockPadDrillButton)
+	{
+		// 移動キー、掘るAxisのみブロック。
+		if (pad_num < 3) return false;
+	}
+
 	//キーがプラスと被らないように１０を足す
 	int buf = pad_num + 10;
 	//キーが無ければ初期化
@@ -271,7 +333,7 @@ void cInputAll::setup( )
 	}, (void *)0x4 );
 	Gamepad_axisMoveFunc( [ ] ( Gamepad_device* device, unsigned int axisID, float value, float lastValue, double timestamp, void * context )
 	{
-		if ( value < 0.3f || value > 0.3f )
+		if ( value < 0.125f || value > 0.125f)
 		{
 			ENV->padAxis( axisID, value );
 		}

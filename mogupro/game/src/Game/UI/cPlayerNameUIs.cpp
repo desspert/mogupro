@@ -6,11 +6,12 @@ namespace Game
 {
 namespace UI
 {
-bool cPlayerNameUIs::init( )
+bool cPlayerNameUIs::init( int team )
 {
 	for ( auto& it : cPlayerManager::getInstance( )->getPlayers( ) )
 	{
-		if ( cPlayerManager::getInstance( )->getActivePlayerTeamId( ) != it->getWhichTeam( ) ) continue;
+		this->team = team;
+		if ( team != it->getWhichTeam( ) ) continue;
 		if ( it->isWatching( ) ) continue;
 
 		auto l = this->add_child( Node::Renderer::label::create( "AMEMUCHIGOTHIC-06.ttf", 32.0F ) );
@@ -20,11 +21,11 @@ bool cPlayerNameUIs::init( )
 		auto pos2D = CAMERA->getCamera( ).worldToScreen( it->getPos( ) + ci::vec3( 0, aabb.getSize( ).y / 2.0F, 0 ), cinder::app::getWindowWidth( ), cinder::app::getWindowHeight( ) );
 		l->set_position( pos2D + ci::vec2( 5 ) );
 		l->set_tag( it->getPlayerId( ) );
-		l->set_text( u8"‚à‚®‚ç" + std::to_string( it->getPlayerId( ) ) );
+		l->set_text( it->playerName );
 		l->set_color( ci::ColorA( 0, 0, 0, 1 ) );
 
 		auto instance = l->add_child( Node::Renderer::label::create( "AMEMUCHIGOTHIC-06.ttf", 32.0F ) );
-		instance->set_text( u8"‚à‚®‚ç" + std::to_string( it->getPlayerId( ) ) );
+		instance->set_text(it->playerName);
 		instance->set_position( ci::vec2( -5 ) );
 	}
 	set_schedule_update( );
@@ -41,7 +42,7 @@ void cPlayerNameUIs::update( float delta )
 
 	for ( auto& it : cPlayerManager::getInstance( )->getPlayers( ) )
 	{
-		if ( cPlayerManager::getInstance( )->getActivePlayerTeamId( ) != it->getWhichTeam( ) ) continue;
+		if ( team != it->getWhichTeam( ) ) continue;
 		if ( it->isWatching( ) ) continue;
 		auto p = this->get_child_by_tag( it->getPlayerId( ) );
 		ci::Frustum fru( CAMERA->getCamera( ) );

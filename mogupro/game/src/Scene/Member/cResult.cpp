@@ -11,6 +11,7 @@
 #include <Game/cPlayerManager.h>
 #include <Resource/cSoundManager.h>
 #include <Network/cMatchingMemberManager.h>
+#include <Network/cUDPClientManager.h>
 using namespace Node::Renderer;
 using namespace cinder;
 using namespace Node::Action;
@@ -326,6 +327,15 @@ public:
 const float CANNON_POWER_HALF_LENGTH = ( Game::Field::WORLD_SIZE.z - 8 * 2 ) / 2.0F;
 void cResult::setup()
 {
+	// 0番の人はサーバーにゲームが終了したことを通知します。
+	if (Game::cPlayerManager::getInstance()->getActivePlayerId() == 0)
+	{
+		Network::cUDPClientManager::getInstance()->send(new Network::Packet::Request::cReqGameEnd());
+	}
+
+	// リザルトは長いのでサーバーからの応答がなくても自動で切断させません。
+	Network::cUDPClientManager::getInstance()->setDontClose(true);
+
 	root = Node::node::create();
 	root->set_schedule_update();
 	root->set_content_size(app::getWindowSize());
@@ -355,7 +365,7 @@ void cResult::setup()
 		bool win = gm->winTeam() == Game::Player::Red;
 		for (int i = 0; i < 3; ++i)
 		{
-			redPlayerName.emplace_back(createPlayerName( i ));
+			redPlayerName.emplace_back(Game::cPlayerManager::getInstance()->getPlayer(i)->playerName);
 		}
 		auto& n = win ? winBoard : loseBoard;
 		n = rootUI->add_child(createScoreBoard(
@@ -374,7 +384,7 @@ void cResult::setup()
 		bool win = gm->winTeam() == Game::Player::Blue;
 		for (int i = 4; i < 7; ++i)
 		{
-			bluePlayerName.emplace_back(createPlayerName(i));
+			bluePlayerName.emplace_back(Game::cPlayerManager::getInstance()->getPlayer(i)->playerName);
 		}
 		auto& n = win ? winBoard : loseBoard;
 		n = rootUI->add_child(createScoreBoard(
@@ -436,12 +446,12 @@ void cResult::setup()
 		tarNode->set_position_3d(vec3(0, 0, 0));
 		tarNode->run_action(move_by::create(10.0F, vec3(0, 0, -2)));
 		{
-			auto const NUM = std::max(gm->getResult().second, 1);
+			auto const NUM = std::max(gm->getResult().second / 20, 1);
 			float const ONE_TIME = 4.8F / NUM;
 			bluePowerRoot->run_action(repeat_times::create(sequence::create(call_func::create([this, bluePowerRoot, ONE_TIME] {bluePowerRoot->add_child(createPowerTorus(ONE_TIME))->set_color(ColorA(0, 0, 1)); }), delay::create(ONE_TIME)), NUM));
 		}
 		{
-			auto const NUM = std::max(gm->getResult().first, 1);
+			auto const NUM = std::max(gm->getResult().first / 20, 1);
 			float const ONE_TIME = 4.8F / NUM;
 			redPowerRoot->run_action(sequence::create(repeat_times::create(sequence::create(call_func::create([this, redPowerRoot, ONE_TIME] {redPowerRoot->add_child(createPowerTorus(ONE_TIME))->set_color(ColorA(1, 0, 0)); }), delay::create(ONE_TIME)), NUM),
 				call_func::create([this, power_in, burst, sky]
@@ -472,12 +482,12 @@ void cResult::setup()
 		tarNode->set_position_3d(vec3(0, 0, 0));
 		tarNode->run_action(move_by::create(10.0F, vec3(0, 0, -2)));
 		{
-			auto const NUM = std::max(gm->getResult().first, 1);
+			auto const NUM = std::max(gm->getResult().first / 20, 1);
 			float const ONE_TIME = 4.8F / NUM;
 			redPowerRoot->run_action(repeat_times::create(sequence::create(call_func::create([this, bluePowerRoot, ONE_TIME] {bluePowerRoot->add_child(createPowerTorus(ONE_TIME))->set_color(ColorA(0, 0, 1)); }), delay::create(ONE_TIME)), NUM));
 		}
 		{
-			auto const NUM = std::max(gm->getResult().second, 1);
+			auto const NUM = std::max(gm->getResult().second / 20, 1);
 			float const ONE_TIME = 4.8F / NUM;
 			bluePowerRoot->run_action(sequence::create(repeat_times::create(sequence::create(call_func::create([this, bluePowerRoot, ONE_TIME] {bluePowerRoot->add_child(createPowerTorus(ONE_TIME))->set_color(ColorA(0, 0, 1)); }), delay::create(ONE_TIME)), NUM),
 				call_func::create([this, power_in, burst, sky]
@@ -685,14 +695,14 @@ void cResult::setup()
 				scaler->run_action(ease<ci::EaseOutCubic>::create(fade_out::create(1.0F)));
 				scaler->run_action(ease<ci::EaseOutCubic>::create( scale_by::create(1.0F, vec2( 1.0F ) )));
 				scaler->set_position(rootUI->get_content_size() * vec2(0.5F));
-			}), ease<ci::EaseInBack>::create( move_by::create(1.0F, vec2(0.0F, -1000.0F)) ) ));
+			}), delay::create( 4.0F ), ease<ci::EaseInBack>::create(move_by::create(1.0F, vec2(0.0F, -1000.0F)))));
 			logo->set_position(rootUI->get_content_size() * vec2(0.5F));
 		}
 	};
 
 	win_lose->join(bar, [](auto n)
 	{
-		return n->time > 2.0F;
+		return n->time > 6.0F;
 	});
 
 	bar->onStateIn = [this](auto n)
@@ -705,7 +715,7 @@ void cResult::setup()
 
 			hardptr<Node::node> activePlayerScoreBar;
 
-			auto playerName = createPlayerName(id);
+			auto playerName = Game::cPlayerManager::getInstance()->getActivePlayer()->playerName;
 			switch (Game::cPlayerManager::getInstance()->getActivePlayerTeamId())
 			{
 			case Game::Player::Red:
@@ -809,6 +819,11 @@ void cResult::shutDown()
 	Resource::BGM["result/win.wav"].stop();
 	Resource::BGM["result/lose.wav"].stop();
 	Resource::BGM["result/cannon_power.wav"].stop();
+
+	ENV->enableKeyButton();
+	ENV->enableMouseButton();
+	ENV->enablePadButton();
+	ENV->enablePadAxis();
 }
 void cResult::resize()
 {
@@ -908,16 +923,12 @@ hardptr<Node::node> cResult::createScoreBar(std::string playerName, int pointDat
 	death->set_anchor_point(vec2(1, 0.5F));
 	death->set_position(vec2(546, 33));
 
-	auto name = scr->add_child(Node::Renderer::label::create("AMEMUCHIGOTHIC-06.ttf", 46));
+	auto name = scr->add_child(Node::Renderer::label::create("AMEMUCHIGOTHIC-06.ttf", 30));
 	name->set_text(playerName);
 	name->set_anchor_point(vec2(0.5F));
-	name->set_position(vec2(113, 33 + 3));
+	name->set_position(vec2(120, 33 + 3));
 
 	return scr;
-}
-std::string cResult::createPlayerName(int playerId)
-{
-	return u8"もぐら" + std::to_string(playerId);
 }
 }
 }

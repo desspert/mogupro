@@ -29,7 +29,7 @@ namespace Game
 			~cGemStone();
 
 			void         setUp();
-			void         draw();
+			void         draw(bool isFbo);
 			void         drawFbo();
 			void         update();
 
@@ -74,6 +74,11 @@ namespace Game
 			std::vector<ci::ColorA>      colorAs;
 			Collision::cAABBCollider     mAabb;
 			Light::PointLightHandle mPointLightHandle;
+
+			// ///// ライトのIDをまとめたデータを用意する
+			std::vector<int> pointLightIds;
+			std::vector<int> lineLightIds;
+			std::vector<int> spotLightIds;
 	
 
 			uint32_t BOXINDICES[36] = 

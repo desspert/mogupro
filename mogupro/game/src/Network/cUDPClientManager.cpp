@@ -7,12 +7,13 @@
 #include <Scene/Member/cTitle.h>
 #include <Node/action.hpp>
 #include <Network/IpHost.h>
+#include <Network/cUDPServerManager.h>
 namespace Network
 {
 cUDPClientManager::cUDPClientManager( )
     : mCloseSecond( std::numeric_limits<float>::max( ) )
     , mRoot( Node::node::create( ) )
-    , mConnectSecond( std::numeric_limits<float>::max( ) )
+    //, mConnectSecond( std::numeric_limits<float>::max( ) )
 	, mSequenceId( 0U )
 	, mIsConnected(false)
 	, mServerTime( )
@@ -34,9 +35,29 @@ bool cUDPClientManager::isConnected( )
 }
 void cUDPClientManager::connect( std::string const& ipAddress )
 {
-	mConnectServerHandle = cNetworkHandle( ipAddress, 25565 );
-	send( new Packet::Request::cReqConnect( ), false );
-	mConnectSecond = cinder::app::getElapsedSeconds( ) + PING_HOLD_SECOND;
+	mConnectServerHandle = cNetworkHandle(ipAddress, 25565);
+	send(new Packet::Request::cReqConnect(), false);
+	for (int i = 0; i < 10; ++i)
+	{
+		std::this_thread::sleep_for(std::chrono::milliseconds(100));
+		update(0.1F);
+		if (ipAddress == Network::getLocalIpAddressHost())
+		{
+			cUDPServerManager::getInstance()->update(0.1F);
+		}
+		connection();
+		if (isConnected())
+		{
+			break;
+		}
+	}
+	if (!isConnected())
+	{
+		close();
+		// サーバーからの応答なし。
+		Scene::cSceneManager::getInstance()->shift<Scene::Member::cTitle>();
+	}
+	//mConnectSecond = cinder::app::getElapsedSeconds( ) + PING_HOLD_SECOND;
 }
 void cUDPClientManager::connectOfflineServer( )
 {
@@ -52,6 +73,10 @@ void cUDPClientManager::update( float delta )
     updateSend( );
     mRoot->entry_update( delta );
 }
+void cUDPClientManager::setDontClose(bool value)
+{
+	mStopClose = value;
+}
 float const & cUDPClientManager::getServerTime( )
 {
 	return mServerTime;
@@ -61,8 +86,9 @@ void cUDPClientManager::updateSend( )
 	if ( !mConnectServerHandle )
 	{
 		close( );
-		MES_ERR( "送信ハンドルが未定義です。",
-				 [ ] { Scene::cSceneManager::getInstance( )->shift<Scene::Member::cTitle>( ); } );
+
+		// 送信ハンドルが未定義です。
+		Scene::cSceneManager::getInstance()->shift<Scene::Member::cTitle>();
 	}
 
 	auto& handle = mConnectServerHandle;
@@ -90,7 +116,6 @@ void cUDPClientManager::updateRecv( )
 		mPackets.onReceive( chunk );
     }
 
-    connection( );
     ping( );
 }
 void cUDPClientManager::connection( )
@@ -104,22 +129,22 @@ void cUDPClientManager::connection( )
 		mServerTime = p->time;
 
         using namespace Node::Action;
-        auto act = repeat_forever::create( sequence::create( delay::create( 1.5F ), call_func::create( [ this ]
+        auto act = repeat_forever::create( sequence::create( delay::create( 0.25F ), call_func::create( [ this ]
         {
 			send( new Packet::Request::cReqPing( ) );
         } ) ) );
         act->set_name( "ping" );
         mRoot->run_action( act );
     }
-    if ( !isConnected( ) )
-    {
-        if ( mConnectSecond < cinder::app::getElapsedSeconds( ) )
-        {
-            close( );
-            MES_ERR( "サーバーからの応答がありません。",
-                     [ ] { Scene::cSceneManager::getInstance( )->shift<Scene::Member::cTitle>( ); } );
-        }
-    }
+   // if ( !isConnected( ) )
+   // {
+   //     if ( mConnectSecond < cinder::app::getElapsedSeconds( ) )
+   //     {
+   //         close( );
+			//// サーバーからの応答なし。
+			//Scene::cSceneManager::getInstance()->shift<Scene::Member::cTitle>();
+   //     }
+   // }
 }
 void cUDPClientManager::ping( )
 {
@@ -129,14 +154,17 @@ void cUDPClientManager::ping( )
 
 		mServerTime = p->time;
     }
-    if (mConnectServerHandle.ipAddress != Network::getLocalIpAddressHost())
+    //if (mConnectServerHandle.ipAddress != Network::getLocalIpAddressHost())
     {
-        if (mCloseSecond < cinder::app::getElapsedSeconds())
-        {
-            close();
-            MES_ERR( "サーバーとの接続が切れました。",
-                     [ ] { Scene::cSceneManager::getInstance( )->shift<Scene::Member::cTitle>( ); } );
-        }
+		if (!mStopClose)
+		{
+			if (mCloseSecond < cinder::app::getElapsedSeconds())
+			{
+				close();
+				// サーバーからの接続切れ。
+				Scene::cSceneManager::getInstance()->shift<Scene::Member::cTitle>();
+			}
+		}
     }
 }
 void cUDPClientManager::sendDataBufferAdd( cPacketBuffer const & packetBuffer, bool reliable )

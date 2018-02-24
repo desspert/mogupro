@@ -7,6 +7,7 @@
 #include <Game/Field/FieldData.h>
 #include <Game/cGameManager.h>
 #include <Sound/Stereophonic.h>
+#include <Game/cShaderManager.h>
 namespace Game
 {
 
@@ -40,17 +41,21 @@ namespace Game
 		ci::gl::ScopedBuffer vboScp(ctx->getDrawTextureVbo());
 
 		size_t VisibleRange = 5;
-
+		
 		//原石
 		for (size_t i = 0; i < mGemStone.size(); i++)
 		{
-			mGemStone[i]->draw();
+			mGemStone[i]->draw(false);
 		}
+		cShaderManager::getInstance()->uniformUpdate();
 
-		//欠片
-		for (size_t i = 0; i < mFragmentGems.size(); i++)
 		{
-			mFragmentGems[i]->draw();
+			ci::gl::ScopedBlendAdditive add;
+			//欠片
+			for (size_t i = 0; i < mFragmentGems.size(); i++)
+			{
+				mFragmentGems[i]->draw();
+			}
 		}
 		ci::gl::color(ci::Color(1, 1, 1));
 	};
@@ -76,10 +81,10 @@ namespace Game
 			mVboShader->uniform("visibleRange", mVisibleRange);
 			mVboShader->uniform("playerPos", Game::cPlayerManager::getInstance()->getActivePlayer()->getPos());
 			ci::gl::clear(ci::ColorA(0, 0, 0, 0));
-
+			
 			for (size_t i = 0; i < mGemStone.size(); i++)
 			{
-				mGemStone[i]->draw();
+				mGemStone[i]->draw(true);
 			}
 			ci::gl::color(ci::Color(1, 1, 1));
 
@@ -134,10 +139,16 @@ namespace Game
 
 	void cGemManager::update(float deltaTime)
 	{
-		DistanceSortGemStone();
+		//DistanceSortGemStone();
 		//ジェム点滅用タイム
 		mTime += deltaTime * mLightingSpeed;
-		
+		/*if (isMeshReload)
+		{
+			IdSortGemStone();
+			isMeshReload = false;
+		}
+		*/
+		Repop();
 	};
 
 
@@ -159,12 +170,32 @@ namespace Game
 	void cGemManager::create()
 	{
 		ci::randSeed(uint32_t(mSeed));
+
+
+		for (int i = 0; i < 15;)
+		{
+			ci::vec3 pos;
+		    pos.x = ci::randInt(0, int32_t(Field::CHUNK_RANGE_X-1));
+			pos.y = ci::randInt(0, int32_t(Field::CHUNK_RANGE_Y-1));
+			pos.z = ci::randInt(0, int32_t(Field::CHUNK_RANGE_Z-1));
+
+			if (cFieldManager::getInstance()->isUnderCannon(pos.x, pos.y, pos.z)) continue;
+
+			for each(auto m in mhotSpot)
+			{
+				if (m == pos) continue;
+			}
+			mhotSpot.push_back(pos);
+			i++;
+		}
+
 		for (int i = 0; i < mGemMaxNum; i += 2)
 		{
-
-			int x = ci::randInt(0, int32_t(mRandomRange.x - 1));
-			int y = ci::randInt(0, int32_t(mRandomRange.y - 1));
-			int z = ci::randInt(0, int32_t(mRandomRange.z - 1));
+			
+			int spotnum = i%mhotSpot.size();
+			int x = mhotSpot[spotnum].x * Field::CHUNK_SIZE-1  + ci::randInt(0, int32_t(Field::CHUNK_SIZE - 1));
+			int y = mhotSpot[spotnum].y * Field::CHUNK_SIZE-1 + ci::randInt(0, int32_t(Field::CHUNK_SIZE - 1));
+			int z = mhotSpot[spotnum].z * Field::CHUNK_SIZE-1 + ci::randInt(0, int32_t(Field::CHUNK_SIZE - 1));
 			Gem::GemType type = Game::Gem::GemType(ci::randInt(0, Game::Gem::GemType::Coal + 1));
 
 
@@ -189,7 +220,7 @@ namespace Game
 			}
 
 			//点滅のばらつき出す用
-			color.a = cinder::randFloat(0, 1);
+			color.a = cinder::randFloat(0.0f, 1.0f);
 
 			mGemStone.push_back(std::make_shared<Gem::cGemStone>(
 				                                                 i,
@@ -202,6 +233,7 @@ namespace Game
 				                                                 mPosition + ci::vec3(mRandomRange.x - x + mRandomRange.x - 1, y, mRandomRange.z - z - 1) * mMapChipSize,
 				                                                 ci::vec3(mGemScale),
 				                                                 color, type));
+			mGemStoneIDCount = i + 2;
 		}
 
 		//生成したGemStoneにindicesに割り振り
@@ -343,6 +375,7 @@ namespace Game
 				//VBOを作り直し
 				buildMesh();
 				mGemStone[i]->setIsActive(false);
+				isMeshReload = true;
 				return  addGems;
 			}
 		}
@@ -415,5 +448,62 @@ namespace Game
 	void cGemManager::IdSortGemStone()
 	{
 		std::sort(mGemStone.begin(), mGemStone.end(), [&](const std::shared_ptr<Gem::cGemStone> a, const std::shared_ptr<Gem::cGemStone> b) { return a->getId() < b->getId(); });
+	}
+
+	void cGemManager::Repop()
+	{
+		if (Game::cGameManager::getInstance()->getLeftBattleTimef() <= 150.0f)
+		{
+			if (int(Game::cGameManager::getInstance()->getLeftBattleTimef()) % 5 == 0)
+			{
+				if (Repoped) return;
+				if (mGemStone.size() >= 300) return;
+				for (int i = 0; i < 5; i++)
+				{
+					int spotnum = mGemStone.size() % mhotSpot.size();
+					int x = mhotSpot[spotnum].x * Field::CHUNK_SIZE - 1 + ci::randInt(0, int32_t(Field::CHUNK_SIZE - 1));
+					int y = mhotSpot[spotnum].y * Field::CHUNK_SIZE - 1 + ci::randInt(0, int32_t(Field::CHUNK_SIZE - 1));
+					int z = mhotSpot[spotnum].z * Field::CHUNK_SIZE - 1 + ci::randInt(0, int32_t(Field::CHUNK_SIZE - 1));
+					Gem::GemType type = Game::Gem::GemType(ci::randInt(0, Game::Gem::GemType::Coal + 1));
+
+
+					//モデル切り替え
+					ci::ColorA color = ci::Color(1, 1, 1);
+					switch (type)
+					{
+					case Game::Gem::GemType::Dia:
+						color = ci::ColorA8u(52, 152, 219);
+						break;
+					case Game::Gem::GemType::Gold:
+						color = ci::ColorA8u(241, 196, 15);
+						break;
+					case Game::Gem::GemType::Coal:
+						color = ci::ColorA8u(155, 89, 182);
+						break;
+					case Game::Gem::GemType::Iron:
+						color = ci::ColorA8u(139, 195, 74);
+						break;
+					default:
+						break;
+					}
+
+					//点滅のばらつき出す用
+					color.a = cinder::randFloat(0.0f, 1.0f);
+
+					mGemStone.push_back(std::make_shared<Gem::cGemStone>(
+						mGemStoneIDCount,
+						(ci::vec3(x, y, z) * mMapChipSize) + mPosition,
+						ci::vec3(mGemScale),
+						color, type));
+
+					mGemStoneIDCount++;
+				}
+				Repoped = true;
+			}
+			else
+			{
+				Repoped = false;
+			}
+		}
 	}
 }

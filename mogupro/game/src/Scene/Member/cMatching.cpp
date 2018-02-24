@@ -15,7 +15,8 @@
 #include <Log/Log.h>
 #include <cinder/Rand.h>
 #include <Scene/Member/cTitle.h>
-
+#include <Resource/cSoundManager.h>
+#include <Sound/Wav.h>
 using namespace Network;
 using namespace Network::Packet::Event;
 using namespace Network::Packet::Request;
@@ -24,31 +25,96 @@ using namespace Node::Action;
 
 DrillUI::DrillUI() { }
 
-DrillUI::DrillUI(ci::vec2 pos, ci::vec2 moveVec, std::string name)
+DrillUI::DrillUI(ci::vec2 pos, ci::vec2 fontPos, ci::vec2 moveVec, std::string name)
 {
 	using namespace Node;
 	using namespace Node::Action;
 	mRoot = Node::node::create();
 	mRoot->set_schedule_update();
 	mRoot->set_position(pos);
-	mRoot->run_action(ease<ci::EaseOutCirc>::create(
-		move_to::create(3.0F, ci::vec3(moveVec.x, moveVec.y, 0))));
-	auto plate = Node::Renderer::sprite::create(Resource::IMAGE["matching/drillUI2.png"]);
+	mRoot->run_action(sequence::create(ease<ci::EaseOutCubic>::create(
+		move_to::create(2.0F, ci::vec3(moveVec.x, moveVec.y, 0))),
+		call_func::create([this] {
+	
+		})));//“ü‚é‚Æ‚±‚ë
+
+	hardptr<Node::Renderer::sprite> plate;
+
+	plate = Node::Renderer::sprite::create(Resource::IMAGE["matching/drillUI.png"]);
+
 	plate->set_position(ci::vec2(0, 0));
-	plate->set_scale(glm::vec2(1.8f, 0.8f));
-	mRoot->add_child(plate);
+	plate->set_scale(glm::vec2(1.6f, 1.0f));
 
 	auto f = Node::Renderer::label::create("sawarabi-gothic-medium.ttf", 32);
+	f->set_color(ci::Color(0,0,0));
 	f->set_text(u8"" + name);
-	f->set_position(ci::vec2(0, 0));
+	f->set_position(fontPos);
 	f->set_schedule_update();
 	f->set_scale(glm::vec2(1, -1));
+	auto fire = Node::Renderer::sprite::create(Resource::IMAGE["matching/fire1.png"]);
+	fire->set_tag(10);
+	if (pos.x < 0)
+	{
+		firePosition = ci::vec2(-189,-4);
+	}
+	else
+	{
+		firePosition = ci::vec2(-189, -4);
+		mRoot->set_rotation(M_PI);
+		f->set_rotation(M_PI);
+	}
+	mRoot->add_child(plate);
 	mRoot->add_child(f);
+	fire->set_position(firePosition);
+	mRoot->add_child(fire);
+	animationTime = 0;
+	type = AnimationType::BEGIN;
+	time = 2.0f;
 }
 
 void DrillUI::update(float deltaTime)
 {
+
 	mRoot->entry_update(deltaTime);
+	if (type == AnimationType::NONE)return;
+	animationTime++;
+	time -= deltaTime;
+	if (type == AnimationType::BEGIN)
+	{
+		int f = animationTime / 10;
+		int flame = ((int)f) % 4 + 1;
+		if (flame == 4)
+			flame = 1;
+		mRoot->remove_child_by_tag(10);
+		if (time < 0)
+		{
+			type = AnimationType::NONE;
+			animationTime = 0;
+			return;
+		}
+		auto fire = Node::Renderer::sprite::create(Resource::IMAGE["matching/fire" + std::to_string(flame) + ".png"]);
+		fire->set_tag(10);
+		fire->set_position(firePosition);
+		mRoot->add_child(fire);
+	}
+	else if (type == AnimationType::END)
+	{
+		if (time > 3.5f)return;
+		int f = animationTime / 10;
+		int flame = ((int)f) % 3;
+		//05, 06, 03
+		if (flame == 0)
+			flame = 5;
+		else if (flame == 1)
+			flame = 6;
+		else
+			flame = 3;
+		mRoot->remove_child_by_tag(10);
+		auto fire = Node::Renderer::sprite::create(Resource::IMAGE["matching/fire" + std::to_string(flame) + ".png"]);
+		fire->set_tag(10);
+		fire->set_position(firePosition);
+		mRoot->add_child(fire);
+	}
 }
 
 void DrillUI::draw()
@@ -98,14 +164,10 @@ namespace Scene
 	{
 		void cMatching::setup()
 		{
-			
-			Network::cUDPClientManager::getInstance()->open();
-			cUDPClientManager::getInstance()->connect( Resource::JSON["server.json"]["ip"].asString( ) );
 			mClassState = ClassState::NOT;
 			mWaitClassState = ClassState::NOT;
 			mPhaseState = PhaseState::NOT_IN_ROOM;
 			mCanSend = true;
-			mPhaseState = PhaseState::NOT_IN_ROOM;
 			mSelectTag = 0;
 			mPrevSelectTag = 0;
 			mTeamNum = -1;
@@ -122,6 +184,15 @@ namespace Scene
 			for(int i = 0; i < 50;++i)
 			stars.push_back(Star());
 			wantWatching = false;
+			canSendInRoom = false;
+			canStartUpdateServer = false;
+
+			Network::cUDPClientManager::getInstance()->open();
+			cUDPClientManager::getInstance()->connect(Resource::JSON["server.json"]["ip"].asString());
+			auto bgm = Sound::Wav(cinder::app::getAssetDirectories().front().string() + "/BGM/modeselect.wav");
+			introloopBGM.create(bgm.data(), bgm.size(), 22.130F, 78.594F);
+			introloopBGM.gain(0.15F);
+			introloopBGM.play();
 		}
 
 		void cMatching::registerFunc()
@@ -136,114 +207,89 @@ namespace Scene
 			mRoot = Node::node::create();
 			mRoot->set_schedule_update();
 
-			//‘Îíƒ{ƒ^ƒ“UI
-			auto fightPlate = Node::Renderer::sprite::create(Resource::IMAGE["matching/greenUI.png"]);
-			fightPlate->set_schedule_update();
-			fightPlate->set_tag(0);
-			fightPlate->set_position(ci::vec2(-250, 0));
-			mRoot->add_child(fightPlate);
-			{
-				auto f = Node::Renderer::label::create("sawarabi-gothic-medium.ttf",50);
-				f->set_text(u8"‘Îí");
-				f->set_scale(glm::vec2(1, -1));
-				fightPlate->add_child(f);
-			}
-			outRoomFunc.emplace_back(
-				[this] {
-				mCanSend = false;
-				cUDPClientManager::getInstance()->send(new cReqMakeRoom(100));
-				mWaitClassState = ClassState::MASTER;
-			});
-
-			//ƒ^ƒCƒgƒ‹‚É–ß‚éƒ{ƒ^ƒ“UI
-			auto lookPlate = Node::Renderer::sprite::create(Resource::IMAGE["matching/redUI.png"]);
-			lookPlate->set_schedule_update();
-			lookPlate->set_tag(1);
-			lookPlate->set_position(ci::vec2(250, 0));
-			mRoot->add_child(lookPlate);
-			{
-				auto f = Node::Renderer::label::create("sawarabi-gothic-medium.ttf", 30);
-				f->set_text(u8"ƒ^ƒCƒgƒ‹‚É–ß‚é");
-				f->set_scale(glm::vec2(1, -1));
-				lookPlate->add_child(f);
-			}
-
-			outRoomFunc.emplace_back(
-				[this] 
-			{
-				sceneChange = true;
-				sceneType = SceneType::TITLE;
-			});
-			mRoot->get_child_by_tag(mSelectTag)->run_action(
-				repeat_forever::create(
-					sequence::create(
-						ease<ci::EaseInOutCirc>::create(scale_by::create(0.26F, ci::vec2(0.2F))),
-						ease<ci::EaseInOutCirc>::create(scale_by::create(0.26F, ci::vec2(-0.2F)))
-					)
-				)
-			);
-
-			inRoomFunc.emplace_back(
-				[this] {
-				if (mClassState == ClassState::MASTER)
-				{
-					cUDPClientManager::getInstance()->send(new cReqCheckBeginGame());
-					mCanSend = false;
-				}
-			});
-
 			mMemberRoot = Node::node::create();
 			mMemberRoot->set_scale(ci::vec2(1, 1));
 			mMemberRoot->set_schedule_update();
-			{
-				auto lookPlate = Node::Renderer::sprite::create(Resource::IMAGE["matching/eastPlate.png"]);
-				lookPlate->set_position(ci::vec2(-350, 285));
-				mMemberRoot->add_child(lookPlate);
-
-				auto f = Node::Renderer::label::create("sawarabi-gothic-medium.ttf", 50);
-				f->set_color(ci::ColorA(1, 0, 0));
-				f->set_text(u8"ÔŒR");
-				f->set_scale(glm::vec2(1, -1));
-				lookPlate->add_child(f);
-			}
-			{
-				auto plate = Node::Renderer::sprite::create(Resource::IMAGE["matching/eastPlate.png"]);
-				plate->set_position(ci::vec2(350, 285));
-				mMemberRoot->add_child(plate);
-
-				auto f = Node::Renderer::label::create("sawarabi-gothic-medium.ttf", 50);
-				f->set_color(ci::ColorA(0, 0, 1));
-				f->set_text(u8"ÂŒR");
-				f->set_scale(glm::vec2(1, -1));
-				plate->add_child(f);
-			}
 		}
 		void cMatching::setAnimation()
 		{
-			auto m = Node::Renderer::rect::create(ci::vec2(100, 100));
-			m->set_position(ci::vec2(0, 0));
-			m->set_color(ci::ColorA(1, 0, 0));
+			auto m = Node::node::create();
 			m->set_schedule_update();
-			m->set_axis(ci::vec3(1, 1, 0));
-			m->run_action(sequence::create(spawn::create(ease<ci::EaseInOutCirc>::create(scale_by::create(3.0f, ci::vec2(2.2f))),
-				rotate_to::create(2.0F, M_PI * 2)),
-				fade_out::create(1.5f),
+			m->run_action(sequence::create(
 				call_func::create([this] {
+				float randPos[3][3];
+				float randTime[3][3];
+
+				for (int i = 0; i < 3; i++)
+				{
+					for (int k = 0; k < 3; k++)
+					{
+						randPos[i][k] = ci::randFloat(-45.0f,45.0f);
+						randTime[i][k] = ci::randFloat(0.0f, 3.0f);
+					}
+				}
+
+				int c = 0;
 				for (auto& m : drillUI1Ps)
 				{
 					ci::vec2 pos = m.mRoot->get_position();
-					m.mRoot->run_action(sequence::create(move_to::create(3.5F, ci::vec3(-1000, pos.y, 0)),
-						ease<ci::EaseOutCirc>::create(move_to::create(4.0F, ci::vec3(-200, pos.y, 0)))));
+					m.mRoot->run_action(sequence::create(move_to::create(2.0F, ci::vec3(-2000, pos.y, 0)),
+						ease<ci::EaseOutCubic>::create(move_to::create(1.0F, ci::vec3(-240, pos.y, 0)))));
+					m.time = 3.f;
+					m.type = DrillUI::AnimationType::END;
+					c++;
 				}
-
+				c = 0;
 				for (auto& m : drillUI2Ps)
 				{
 					ci::vec2 pos = m.mRoot->get_position();
-					m.mRoot->run_action(sequence::create(move_to::create(3.5F, ci::vec3(1000, pos.y, 0)),
-						ease<ci::EaseOutCirc>::create(move_to::create(4.0F, ci::vec3(200, pos.y, 0)))));
+					m.mRoot->run_action(sequence::create(move_to::create(2.0F, ci::vec3(2000, pos.y, 0)),
+						ease<ci::EaseOutCubic>::create(move_to::create(1.0F, ci::vec3(240, pos.y, 0)))));
+					m.time = 3.f;
+					m.type = DrillUI::AnimationType::END;
+					c++;
 				}
 			}),
-				delay::create(5.0f),
+
+
+				delay::create(3.0),
+				call_func::create([this] {
+				flag = true;
+			}),
+				delay::create(1.0),
+				//ƒqƒr“ü‚ê‚é‚P
+				call_func::create([this] {
+				
+				Resource::SE["Matching/h.wav"].play();
+				auto h = Node::Renderer::sprite::create(Resource::IMAGE["matching/h1.png"]);
+				h->set_schedule_update();
+				h->set_position(ci::vec2(-200, 400));
+				mMemberRoot->add_child(h);
+				introloopBGM.stop();
+			}),
+				delay::create(1.2f),
+				//ƒqƒr“ü‚ê‚é‚Q
+				call_func::create([this] {
+				Resource::SE["Matching/h.wav"].play();
+				auto h = Node::Renderer::sprite::create(Resource::IMAGE["matching/h2.png"]);
+				h->set_schedule_update();
+				h->set_position(ci::vec2(250, -450));
+				mMemberRoot->add_child(h);
+			}),
+				delay::create(0.8f),
+				//ƒqƒr“ü‚ê‚é3
+				call_func::create([this] {
+				Resource::SE["Matching/h.wav"].play();
+				auto h = Node::Renderer::sprite::create(Resource::IMAGE["matching/h1.png"]);
+				h->set_schedule_update();
+				h->set_position(ci::vec2(0, 80));
+				mMemberRoot->add_child(h);
+			}),
+				delay::create(0.5f),
+				call_func::create([this] {
+				//ƒqƒr“ü‚ê‚é4 	
+				Resource::SE["Matching/p.wav"].play();
+			}),
 				call_func::create([this]
 			{
 				ci::gl::ScopedFramebuffer fbScp(mTrimeshAnimationFbo);
@@ -258,6 +304,7 @@ namespace Scene
 					m.draw();
 				for (auto& m : drillUI2Ps)
 					m.draw();
+				mMemberRoot->entry_render(cinder::mat4());
 				mTrimeshAnimation.make(ci::vec2(1600, 900), ci::vec2(20, 15));
 				mBeginAnimation = true;
 			}),
@@ -272,16 +319,21 @@ namespace Scene
 
 		void cMatching::shutDown()
 		{
-
+			introloopBGM.stop();
 		}
 
 		void cMatching::update(float deltaTime)
 		{
+			if (flag) {
+				CAMERA->shakeCamera2D(50.f, 3.5F);
+				flag = false;
+			}
+
 			if (sceneChange == true)return;
-			mPrevSelectTag = mSelectTag;
 			mRoot->entry_update(deltaTime);
 			mMemberRoot->entry_update(deltaTime);
-			
+			introloopBGM.update(deltaTime);
+		
 			for (auto& m : stars)
 				m.update(deltaTime);
 
@@ -291,11 +343,33 @@ namespace Scene
 				m.update(deltaTime);
 			if (mBeginAnimation == true)
 				mTrimeshAnimation.update(deltaTime);
-			Network::cUDPClientManager::getInstance()->update(deltaTime);
-			if (cUDPClientManager::getInstance()->isConnected() == false)return;
+
+				Network::cUDPClientManager::getInstance()->update(deltaTime);
+				if (cUDPClientManager::getInstance()->isConnected() == false)return;
+
+			if (canStartUpdateServer == false)
+			{
+				cUDPClientManager::getInstance()->send(new cReqMakeRoom(100));
+				mWaitClassState = ClassState::MASTER;
+				canStartUpdateServer = true;
+			}
+
 			makeRoom();
 			inRoom();
 			updateBoxFunc();
+
+			if (mPhaseState == PhaseState::IN_ROOM && mClassState == ClassState::CLIENT
+				|| mClassState == ClassState::MASTER)
+			{
+				auto m = Network::cUDPClientManager::getInstance()->getUDPManager();
+				while (auto resCheckBeginGame = m->ResCheckBeginGame.get())
+				{
+					cMatchingMemberManager::getInstance()->mPlayerID = resCheckBeginGame->mPlayerID;
+					setAnimation();
+					continue;
+				}
+			}
+
 			if (sceneChange == true)
 			{
 				if(sceneType == SceneType::TITLE)
@@ -303,7 +377,6 @@ namespace Scene
 				else if(sceneType == SceneType::GAME_MAIN)
 					cSceneManager::getInstance( )->shift<Scene::Member::cGameMain>( );
 			}
-
 		}
 
 
@@ -322,18 +395,6 @@ namespace Scene
 					)
 				);
 			}
-
-			if (mPhaseState == PhaseState::IN_ROOM && mClassState == ClassState::CLIENT
-				|| mClassState == ClassState::MASTER)
-			{
-				auto m = Network::cUDPClientManager::getInstance( )->getUDPManager( );
-				while (auto resCheckBeginGame = m->ResCheckBeginGame.get())
-				{
-					cMatchingMemberManager::getInstance()->mPlayerID = resCheckBeginGame->mPlayerID;
-					setAnimation();
-					continue;
-				}
-			}
 		}
 
 		void cMatching::makeRoom()
@@ -346,30 +407,6 @@ namespace Scene
 				while (auto resMakeRoom = m->ResMakeRoom.get())
 				{
 					continue;
-				}
-
-				if (ENV->pushKey(ci::app::KeyEvent::KEY_RIGHT))
-				{
-					mSelectTag = std::min(mSelectTag + 1, 1);
-				}
-
-				if (ENV->pushKey(ci::app::KeyEvent::KEY_LEFT))
-				{
-					mSelectTag = std::max(mSelectTag - 1, 0);
-				}
-
-				if (ENV->pushKey(ci::app::KeyEvent::KEY_RETURN) && mCanSend)
-				{
-					outRoomFunc[mSelectTag]();
-				}
-
-				if (ENV->pressKey(ci::app::KeyEvent::KEY_a) && ENV->pressKey(ci::app::KeyEvent::KEY_s) && mCanSend)
-				{
-					cUDPClientManager::getInstance()->send(new cReqInRoomWatching(100));
-					mCanSend = false;
-					mWaitClassState = ClassState::CLIENT;
-					mSelectTag = 0;
-					wantWatching = true;
 				}
 			}
 			else if (mWaitClassState == ClassState::CLIENT)
@@ -427,8 +464,14 @@ namespace Scene
 			mAddMember = false;
 			if (mClassState == ClassState::NOT)return;
 
-			if (ENV->pushKey(ci::app::KeyEvent::KEY_RETURN) && mCanSend)
-				inRoomFunc[mSelectTag]();
+			if (ENV->pushKey(ci::app::KeyEvent::KEY_RETURN) || ENV->isPadPush(ENV->BUTTON_2) && mCanSend)
+			{
+				if (mClassState == ClassState::MASTER)
+				{
+					cUDPClientManager::getInstance()->send(new cReqCheckBeginGame());
+					mCanSend = false;
+				}
+			}
 
 			//Team‚É“ü‚ê‚½‚©‚Ç‚¤‚©
 			auto m = Network::cUDPClientManager::getInstance( )->getUDPManager( );
@@ -439,17 +482,19 @@ namespace Scene
 					mTeamNum = resWantTeamIn->mTeamNum;
 				Network::cMatchingMemberManager::getInstance()->mPlayerTeamNum = mTeamNum;
 				mCanSend = true;
-				if (wantWatching == false)
-				{
+
+				int num = resWantTeamIn->mPlayerID;
+
+				if (num >= 4)
+					num -= 1;
 					if (resWantTeamIn->mTeamNum == 0)
-						drillUI1Ps.push_back(DrillUI(ci::vec2(-1000, 200 - 200 * teamCount[0]),
-							ci::vec2(-200, 200 - 200 * teamCount[0]), "You"));
+						drillUI1Ps.push_back(DrillUI(ci::vec2(-1000, 140 - 130 * teamCount[0]), ci::vec2(0,-2),
+							ci::vec2(-390, 140 - 130 * teamCount[0]), cMatchingMemberManager::getInstance()->mNameStrs[num]+ "(You)"));
 
 					else if (resWantTeamIn->mTeamNum == 1)
-						drillUI2Ps.push_back(DrillUI(ci::vec2(1000, 200 - 200 * teamCount[1]),
-							ci::vec2(200, 200 - 200 * teamCount[1]), "You"));
+						drillUI2Ps.push_back(DrillUI(ci::vec2(1000, 140 - 160 * teamCount[1]), ci::vec2(0, -2),
+							ci::vec2(390, 140 - 160 * teamCount[1]), cMatchingMemberManager::getInstance()->mNameStrs[num] + "(You)"));
 					teamCount[mTeamNum]++;
-				}
 			}
 			//TODO : ŽQ‰Á‚µ‚½ê‡‚ÆTeam‚ª•ÏX‚³‚ê‚½ê‡‚Í•ª‚¯‚é‚×‚«
 			int count = 0;
@@ -460,12 +505,17 @@ namespace Scene
 				
 				if (eveTeamMember->mPlayerID != 3 && eveTeamMember->mPlayerID != 7)
 				{
+					int num = eveTeamMember->mPlayerID;
+
+					if (num >= 4)
+						num -= 1;
+
 					if (eveTeamMember->mTeamNum == 0)
-						drillUI1Ps.push_back(DrillUI(ci::vec2(-1000, 200 - 200 * teamCount[0]),
-							ci::vec2(-200, 200 - 200 * teamCount[0]), eveTeamMember->mNameStr));
+						drillUI1Ps.push_back(DrillUI(ci::vec2(-1000, 140 - 130 * teamCount[0]), ci::vec2(0, 0),
+							ci::vec2(-390, 140 - 160 * teamCount[0]), cMatchingMemberManager::getInstance()->mNameStrs[num]));
 					else if (eveTeamMember->mTeamNum == 1)
-						drillUI2Ps.push_back(DrillUI(ci::vec2(1000, 200 - 200 * teamCount[1]),
-							ci::vec2(200, 200 - 200 * teamCount[1]), eveTeamMember->mNameStr));
+						drillUI2Ps.push_back(DrillUI(ci::vec2(1000, 140 - 130 * teamCount[1]), ci::vec2(0, 0),
+							ci::vec2(390, 140 - 160 * teamCount[1]), cMatchingMemberManager::getInstance()->mNameStrs[num]));
 					teamCount[eveTeamMember->mTeamNum]++;
 					++count;
 				}	
@@ -478,24 +528,31 @@ namespace Scene
 			auto backView = Node::Renderer::sprite::create(Resource::IMAGE["matching/nightSky.png"]);
 			backView->set_tag(1);
 			backView->set_position(ci::vec2(0, 0));
-			backView->set_scale(ci::vec2(1.0f, -1.0f));
+			backView->set_scale(ci::vec2(2.0f, -1.5f));
 			mRoot->add_child(backView);
 			mSelectTag = 0;
-
+			{
+				auto lookPlate = Node::Renderer::sprite::create(Resource::IMAGE["matching/eastPlate.png"]);
+				lookPlate->set_position(ci::vec2(-350, 0));
+				lookPlate->set_scale(glm::vec2(1, -1));
+				mRoot->add_child(lookPlate);
+			}
+			{
+				auto plate = Node::Renderer::sprite::create(Resource::IMAGE["matching/westPlate.png"]);
+				plate->set_position(ci::vec2(350,0));
+				plate->set_scale(glm::vec2(1, -1));
+				mRoot->add_child(plate);
+			}
 			if (mClassState != ClassState::MASTER)
 				return;
 
-			auto startPlate = Node::Renderer::sprite::create(Resource::IMAGE["matching/greenUI.png"]);
+			auto startPlate = Node::Renderer::sprite::create(Resource::IMAGE["matching/gamestart.png"]);
 			startPlate->set_schedule_update();
+			startPlate->set_scale(glm::vec2(1, -1));
 			startPlate->set_tag(0);
-			startPlate->set_position(ci::vec2(500, -200));
+			startPlate->set_position(ci::vec2(600, -350));
 			mRoot->add_child(startPlate);
-			{
-				auto f = Node::Renderer::label::create("sawarabi-gothic-medium.ttf", 42);
-				f->set_text(u8"ƒQ[ƒ€ŠJŽn");
-				f->set_scale(glm::vec2(1, -1));
-				startPlate->add_child(f);
-			}
+
 			mRoot->get_child_by_tag(mSelectTag)->run_action(
 				repeat_forever::create(
 					sequence::create(
@@ -517,10 +574,12 @@ namespace Scene
 			if (mBeginAnimation != true)
 			{
 				mBackRoot->entry_render(cinder::mat4());
-				for (auto& m : stars)
-					m.draw();
+				
 				mRoot->entry_render(cinder::mat4());
 				
+				for (auto& m : stars)
+					m.draw();
+
 				for (auto& m : drillUI1Ps)
 					m.draw();
 				for (auto& m : drillUI2Ps)

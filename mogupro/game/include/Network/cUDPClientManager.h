@@ -32,6 +32,7 @@ public:
     void connect( std::string const& ipAddress );
     void connectOfflineServer( );
     void update( float delta );
+	void setDontClose( bool value );
 	float const& getServerTime( );
 	inline cUDPManager* const getUDPManager( )
 	{
@@ -68,8 +69,11 @@ private:
 
     // サーバーに接続できたかを保証します。
     // 5秒以上応答がない場合は切断します。
-    float mConnectSecond;
+	// 強制的に待ちます。
+    //float mConnectSecond;
 
 	float mServerTime;
+
+	bool mStopClose = false;
 };
 }

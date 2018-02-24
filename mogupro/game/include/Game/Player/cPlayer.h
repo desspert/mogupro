@@ -54,6 +54,8 @@ class cBase;
 		static const float DEFAULT_NO_DAMAGE_TIME = 3.0f;
 
 		class cPlayer : public Game::cObjectBase {
+		public:
+			const std::string playerName;
 		private:
 			ci::vec3 size;
 			ci::ColorA8u color;
@@ -131,6 +133,17 @@ class cBase;
 			// プレイヤーのヘルメットから放たれるライト
 			Light::SpotLightHandle spotlight;
 
+			// ///// ライトのIDをまとめたデータを用意する
+			std::vector<int> pointLightIds;
+			std::vector<int> lineLightIds;
+			std::vector<int> spotLightIds;
+		public:
+			struct { int p_id, s_id; } getLightIds()
+			{
+				return { light->getId(), spotlight->getId() };
+			};
+		private:
+
 			//掘削時のカメラの遠さ調整
 			void drillingCamera(const float& delta_time);
 			void drill(const float& delta_time);
@@ -150,7 +163,8 @@ class cBase;
 				const bool& is_active_user,
 				const int& main_weapon_id,
 				const int& sub_weapon_id,
-				const Game::Player::Team& team);
+				const Game::Player::Team& team,
+				const std::string& name);
 			~cPlayer() {
 				mCollider.removeWorld();
 				mRigidbody.removeWorld();

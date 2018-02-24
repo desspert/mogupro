@@ -15,6 +15,20 @@
 #include <Game/cGameManager.h>
 #include <Scene/Member/cTitle.h>
 #include"Resource\cImageManager.h"
+#include <Network.hpp>
+#include <Resource/cJsonManager.h>
+#include <Network/cMatchingMemberManager.h>
+using namespace ci;
+using namespace ci::app;
+
+using namespace Node;
+
+using namespace Node::Action;
+
+using namespace Network;
+using namespace Network::Packet::Event;
+using namespace Network::Packet::Request;
+using namespace Network::Packet::Response;
 namespace Scene
 {
 namespace Member
@@ -26,9 +40,8 @@ cModeSelect::cModeSelect( )
 }
 cModeSelect::~cModeSelect( )
 {
-	introloopBGM.stop();
-	mSelectCards.clear();
-	iconnames.clear();
+	
+	
 }
 void cModeSelect::setup()
 {
@@ -36,7 +49,6 @@ void cModeSelect::setup()
 	introloopBGM.create(bgm.data(), bgm.size(), 22.130F, 78.594F);
 	introloopBGM.gain(0.15F);
 	introloopBGM.play();
-
 	CAMERA->refPosition = ci::vec3(0,0,-0.001);
 	ENV->setMouseControl(false);
 	CAMERA->setCameraAngle(ci::vec2(M_PI/18.f, M_PI / 18.f));
@@ -46,23 +58,101 @@ void cModeSelect::setup()
 	for (float i = 0; i < 4; i++) {
 		mSelectCards.push_back(std::make_shared<ModeSelect::cSelectCard>(i*2.f*M_PI / 4.f, iconnames[i], ci::vec3(0, 0.5, 3), ci::vec3(2.5, 0.5, 4.75),i));
 	}
+	root = Node::node::create();
+	root->set_content_size(app::getWindowSize());
+	root->set_schedule_update();
+	root->set_scale(vec2(1, -1));
+	root->set_position(root->get_content_size() * vec2(-0.5F, 0.5F));
+
+	auto fader = root->add_child(Node::Renderer::rect::create(app::getWindowSize()));
+	fader->set_color(ColorA(0, 0, 0, 1));
+	fader->set_anchor_point(vec2(0, 0));
+	fader->run_action(sequence::create( fade_out::create(1.0F), call_func::create([this]
+	{
+		this->isfading = false;
+		//ci::app::console() << "ふおおおおおおおおおおおおおおおおおおおおおおおおおおおおおおおおおおおおおお	" << std::endl;
+	})));
+	//this->isfading = false;
 }
 void cModeSelect::shutDown()
 {
-
+	mSelectCards.clear();
+	iconnames.clear();
+	introloopBGM.stop();
 }
 void cModeSelect::update(float t)
 {
+	if (watching == false)
+	{
 	for (auto& it : mSelectCards) {
 		it->update(t);
 	}
-	selectIcon();
-	introloopBGM.update(t);
 	updateBackGround(t);
 	updateButtonAlfa(t);
 	updateArrow(t);
-	if (ENV->pushKey(ci::app::KeyEvent::KEY_RETURN)) {
-		changeScene();
+	introloopBGM.update(t);
+	selectIcon();
+	if (ENV->pushKey(ci::app::KeyEvent::KEY_RETURN)|| ENV->isPadPush(ENV->BUTTON_2)) {
+		desideScene();
+	}
+	root->entry_update(t);
+		if (ENV->pushKey(ci::app::KeyEvent::KEY_a))
+		{
+			watching = true;
+			Network::cUDPClientManager::getInstance()->open();
+			cUDPClientManager::getInstance()->connect(Resource::JSON["server.json"]["ip"].asString());
+			fase = WatchFase::NONE;
+		}
+	}
+
+	else
+	{
+		Network::cUDPClientManager::getInstance()->update(t);
+		if (cUDPClientManager::getInstance()->isConnected() == false)return;
+		
+		if (fase == WatchFase::NONE)
+		{
+			cUDPClientManager::getInstance()->send(new cReqInRoomWatching(100),true);
+			fase = WatchFase::BEIGN;
+		}
+
+		else if (fase == WatchFase::BEIGN)
+		{
+			auto m = Network::cUDPClientManager::getInstance()->getUDPManager();
+
+			while (auto resInRoom = m->ResInRoom.get())
+			{
+				if (resInRoom->mFlag = false)
+				{
+					cUDPClientManager::getInstance()->send(new cReqInRoom(100),true);
+					continue;
+				}
+				cUDPClientManager::getInstance()->send(new cReqWantTeamIn(0),true);
+				fase = WatchFase::WAIT;
+			}
+		}
+
+		else if (fase == WatchFase::WAIT)
+		{
+			auto m = Network::cUDPClientManager::getInstance()->getUDPManager();
+			while (auto resWantTeamIn = m->ResWantTeamIn.get())
+			{
+				if (resWantTeamIn->mFlag == 1)
+				Network::cMatchingMemberManager::getInstance()->mPlayerTeamNum = resWantTeamIn->mTeamNum;;
+			}
+			while (auto eveTeamMember = m->EveTeamMember.get())
+			{
+				cMatchingMemberManager::getInstance()->addPlayerDatas(
+					eveTeamMember->mNameStr, eveTeamMember->mTeamNum, eveTeamMember->mPlayerID, cNetworkHandle("", 0));
+			}
+			while (auto resCheckBeginGame = m->ResCheckBeginGame.get())
+			{
+				cMatchingMemberManager::getInstance()->mPlayerID = resCheckBeginGame->mPlayerID;
+				cSceneManager::getInstance()->shift<Scene::Member::cGameMain>();
+				continue;
+			}
+		}
+
 	}
 
 }
@@ -83,6 +173,8 @@ void cModeSelect::draw2D()
 {
 	/*mDrawFunc.drawTextureRect2D(ci::vec2(400,-175+aroowtranceY), ci::vec2(-250, 50), M_PI+M_PI/9.f, "redright.png", ci::ColorA(1, 1, 1,arrowAlfa));
 	mDrawFunc.drawTextureRect2D(ci::vec2(-400, -175+aroowtranceY), ci::vec2(250, 50), M_PI - M_PI / 9.f, "redright.png", ci::ColorA(1, 1,1, arrowAlfa));*/
+	mDrawFunc.drawTextureRect2D(ci::vec2(550,-320), ci::vec2(-590,449)*0.52f, M_PI, "title/logo.png", ci::ColorA(1, 1, 1, 1));
+	root->entry_render(mat4());
 }
 void cModeSelect::resize()
 {
@@ -100,9 +192,7 @@ void cModeSelect::createTextureNames()
 
 void cModeSelect::changeScene()
 {
-	for (auto& it : mSelectCards) {
-		if (it->getIsEasing())return;//イージング中は無効
-	}
+	
 	switch (MSelectScene)
 	{
 	case 0:
@@ -124,7 +214,9 @@ void cModeSelect::changeScene()
 
 void cModeSelect::selectIcon()
 {
-	if (ENV->pushKey(ci::app::KeyEvent::KEY_LEFT)) {
+	if (isfading)return;
+
+	if (ENV->pushKey(ci::app::KeyEvent::KEY_LEFT)||ENV->getPadAxisPushMinus(0)) {
 		Resource::cSoundManager::getInstance()->findSe("ModeSelect/cursor.wav").setGain(0.4f);
 		Resource::cSoundManager::getInstance()->findSe("ModeSelect/cursor.wav").play();
 		for (auto& it : mSelectCards) {
@@ -134,7 +226,7 @@ void cModeSelect::selectIcon()
 		if (MSelectScene == 4)MSelectScene = 0;
 		return;
 	}
-	if (ENV->pushKey(ci::app::KeyEvent::KEY_RIGHT)) {
+	if (ENV->pushKey(ci::app::KeyEvent::KEY_RIGHT) || ENV->getPadAxisPushPlus(0)) {
 		Resource::cSoundManager::getInstance()->findSe("ModeSelect/cursor.wav").setGain(0.4f);
 		Resource::cSoundManager::getInstance()->findSe("ModeSelect/cursor.wav").play();
 		for (auto& it : mSelectCards) {
@@ -176,6 +268,25 @@ void cModeSelect::shiftTutorial()
 	Network::cUDPClientManager::getInstance()->connectOfflineServer();
 	Game::cGameManager::getInstance()->setTime(0.0F);
 	cSceneManager::getInstance()->shift<Scene::Member::cTutorial>();
+}
+
+void cModeSelect::desideScene()
+{
+	if (isfading)return;
+	for (auto& it : mSelectCards) {
+		if (it->getIsEasing())return;//イージング中は無効
+	}
+	Resource::cSoundManager::getInstance()->findSe("ModeSelect/return.wav").setGain(0.8f);
+	Resource::cSoundManager::getInstance()->findSe("ModeSelect/return.wav").play();
+	introloopBGM.fadeout(0.9f,0.0f);
+	isfading = true;
+	auto fader = root->add_child(Node::Renderer::rect::create(app::getWindowSize()));
+	fader->set_color(ColorA(0, 0, 0, 0));
+	fader->set_anchor_point(vec2(0, 0));
+	fader->run_action(sequence::create( fade_in::create(1.0F), call_func::create([this]
+	{
+		this->changeScene();
+	})));
 }
 
 void cModeSelect::updateBackGround(float t)

@@ -52,7 +52,7 @@ void cCapsuleManager::update(const float & deltatime)
 {
 	for (auto& itr : mCapsules) {
 
-		itr.second->setCanAction(glm::distance2(Game::cPlayerManager::getInstance()->getActivePlayer()->getPos(), itr.second->getPos()) < 30.f);
+		itr.second->setCanAction(glm::distance(Game::cPlayerManager::getInstance()->getActivePlayer()->getPos(), itr.second->getPos()) < 10.f);
 
 		if (itr.second->getCanAction()) {
 			itr.second->update(deltatime);
@@ -127,7 +127,7 @@ void cCapsuleManager::HitPlayer(const int playerid, const int capsuleid)
 			.textureType(Particle::ParticleTextureType::SPARK)
 			.colors(colors)
 			.convergePoint(Game::cPlayerManager::getInstance()->getActivePlayer()->getReferencePos())
-			.speed(0.5f)
+			.speed(0.15f)
 			.swellEndTime(0.1f)
 			.swellWaitTime(30.0f)
 			.easeTime(30.0f)

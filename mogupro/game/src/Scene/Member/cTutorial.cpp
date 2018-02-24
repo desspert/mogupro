@@ -33,6 +33,7 @@
 #include <Scene/cSceneManager.h>
 #include <Scene/Member/cTitle.h>
 #include <Resource/cSoundManager.h>
+#include <Game/cGameManager.h>
 static ci::vec3 testSoundPos;
 
 using namespace ci;
@@ -66,13 +67,42 @@ namespace Scene
 			teams.emplace_back(Game::Player::Blue);
 			teams.emplace_back(Game::Player::Blue);
 			teams.emplace_back(Game::Player::Blue);
+			std::vector<std::string> names;
+			names.emplace_back(u8"名無しもぐ");
+			names.emplace_back(u8"名無しもぐ");
+			names.emplace_back(u8"名無しもぐ");
+			names.emplace_back(u8"名無しもぐ");
+			names.emplace_back(u8"名無しもぐ");
+			names.emplace_back(u8"名無しもぐ");
+			names.emplace_back(u8"名無しもぐ");
+			names.emplace_back(u8"名無しもぐ");
+			{
+				int i = 0;
+				for (auto& o :
+					Network::cMatchingMemberManager::getInstance()->mNameStrs)
+				{
+					names[i] = o;
+					if (i == 2)
+					{
+						i += 1;
+					}
+					i += 1;
+				}
+			}
 			for (auto& o : Network::cMatchingMemberManager::getInstance()->mPlayerDatas)
 			{
 				teams[o.playerID] = o.teamNum;
+				names[o.playerID] = o.nameStr;
 			}
 			teams[active_player_id] = Network::cMatchingMemberManager::getInstance()->mPlayerTeamNum;
+			//if (Network::cMatchingMemberManager::getInstance()->mPlayerName != "moguraNull")
+			//{
+			//	names[active_player_id] = Network::cMatchingMemberManager::getInstance()->mPlayerName;
+			//}
 
-			Game::cPlayerManager::getInstance()->setup(Game::Field::RESPAWN_POINT, 8U, active_player_id, teams);
+			Game::cPlayerManager::getInstance()->setup(Game::Field::RESPAWN_POINT, 8U, active_player_id, teams, names);
+			// ////////プレイヤーが揃った後に、キャノンにはプレイヤーの使用している全ライトを適応させる。
+			Game::cStrategyManager::getInstance()->lightSetup();
 
 			int seed = 20171031;
 			GemManager->setUp(vec3(0, 0, 0),
@@ -101,6 +131,7 @@ namespace Scene
 
 		void cTutorial::shutDown()
 		{
+			Resource::cSoundManager::getInstance()->findBgm("トロピカル無職.wav").stop();
 			Network::cUDPClientManager::removeInstance();
 			Network::cUDPServerManager::removeInstance();
 			Game::cDebugManager::removeInstance();
@@ -116,6 +147,7 @@ namespace Scene
 			Game::cShaderManager::removeInstance();
 			Particle::cParticleManager::removeInstance();
 			Game::cGemManager::removeInstance();
+			Game::cGameManager::removeInstance();
 			Game::cTutorialManager::removeInstance();
 			// 全てのマネージャーのライトを削除するためライトを使っているマネージャーより下。
 			Game::cLightManager::removeInstance();
@@ -127,6 +159,7 @@ namespace Scene
 			//立体音響の削除
 			Sound::StereophonicManager::getInstance()->clear();
 			Sound::StereophonicManager::getInstance()->close();
+			c_Easing::clear();
 			Game::cTutorialManager::removeInstance();
 		}
 
@@ -170,7 +203,6 @@ namespace Scene
 				Resource::cFbxManager::getInstance()->testUpdate(deltaTime);
 				if (ENV->pushKey(cinder::app::KeyEvent::KEY_F5))
 				{
-					Resource::cSoundManager::getInstance()->findBgm("トロピカル無職.wav").stop();
 					cSceneManager::getInstance()->shift<Scene::Member::cTitle>();
 				}
 			}

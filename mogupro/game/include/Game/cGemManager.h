@@ -9,6 +9,7 @@
 #include <Utility/cSingletonAble.h>
 #include <Game/Gem/cGemStone.h>
 #include <Game/Gem/cFragmentGem.h>
+#include <Game/cFieldManager.h>
 #include <array>
 #define GemManager Game::cGemManager::getInstance()
 
@@ -37,6 +38,7 @@ namespace Game
 		void      create();
 		void      buildMesh();
 		void      clearMesh();
+		void      Repop();
 
 		std::vector<std::shared_ptr<Gem::cGemStone>>         getGemStones() { return mGemStone; }
 		std::vector<std::shared_ptr<Gem::cFragmentGem>>      getFragmentGems() { return mFragmentGems; }
@@ -62,6 +64,7 @@ namespace Game
 		ci::gl::FboRef       mGemBuffer;
 		ci::gl::GlslProgRef  mShader;
 		ci::gl::GlslProgRef  mVboShader;
+		ci::gl::GlslProgRef  mFragGemShader;
 		ci::TriMeshRef       mesh;
 		ci::gl::VboMeshRef   mGemsVbo;
 		unsigned long        mSeed;
@@ -70,7 +73,12 @@ namespace Game
 		const int            mCreateFGemNum = 5;
 		const float          mVisibleRange = 30;
 		int                  mFragGemIDCount = 0;
-		ci::gl::GlslProgRef  mFragGemShader;
+		int                  mGemStoneIDCount = 0;
+		bool                 isMeshReload = false;
+		bool                 Repoped = true;
+
+		std::vector<ci::vec3> mhotSpot;
+
 
 	private:
 		void DistanceSortGemStone();

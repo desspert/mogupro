@@ -19,6 +19,7 @@
 #include <Resource/cImageManager.h>
 #include <Sound/Wav.h>
 #include <Sound/Stereophonic.h>
+#include <Game/cShaderManager.h>
 void Game::Player::cPlayer::updatePlayerRotation()
 {
 	if (!active_user) return;
@@ -273,7 +274,7 @@ void Game::Player::cPlayer::gemsUpdate(const float& delta_time)
 			if (getgems.size() > 1) {
 				GemManager->getFragmentGem(gem_id_buf)->setVisible(false);
 			}
-			it->setPos(mCollider.getPosition() - (normalized_player_vec * ci::vec3(0.3f)) + ci::vec3(0,0.1f,0));
+			it->setPos(mCollider.getPosition() - (normalized_player_vec * ci::vec3(0.3f)) + ci::vec3(0,0.2f,0));
 		}
 	}
 }
@@ -288,11 +289,12 @@ Game::Player::cPlayer::cPlayer(
 	const bool& is_active_user,
 	const int& main_weapon_id,
 	const int& sub_weapon_id,
-	const Game::Player::Team& team)
+	const Game::Player::Team& team,
+	const std::string& name)
 	: cObjectBase(pos), start_position(pos),
 	mCollider(mPos, DEFAULT_SIZE ),
 	mRigidbody(mCollider),team(team),player_id(id),damaged_id(id),
-	active_user(is_active_user)
+	active_user(is_active_user), playerName(name)
 {
 	size = DEFAULT_SIZE;
 	color = ci::vec4(1);
@@ -339,6 +341,11 @@ Game::Player::cPlayer::cPlayer(
 	light = cLightManager::getInstance( )->addPointLight( mPos, lightColor, isWatching( ) ? 0.0F : 1.0F );
 	auto pvec = glm::normalize( getPlayerVec( ) );
 	spotlight = cLightManager::getInstance( )->addSpotLight( mPos + pvec * 0.2F, pvec * 3.0F, lightColor, isWatching() ? 0.0F : 2.0F );
+
+	// /////////ライトのデータを詰め込む。
+	pointLightIds.emplace_back(light->getId());
+	// 鼻にライトが移るのでスポットライトは使用しない。
+	// spotLightIds.emplace_back(spotlight->getId());
 }
 
 
@@ -523,11 +530,11 @@ void Game::Player::cPlayer::draw()
 	//死亡中は描画しない
 	if (is_dead)return;
 
-	ci::gl::pushModelView();
-	if (active_user&&
-		(CAMERA->getCameraMode() != CameraManager::CAMERA_MODE::TPS)) {
-		return;
-	}
+	// リザルトでアクティブプレイヤーのみ表示されなくなってしまったので。
+	//if (active_user&&
+	//	(CAMERA->getCameraMode() != CameraManager::CAMERA_MODE::TPS)) {
+	//	return;
+	//}
 
 	//再出撃ときに点滅させる処理
 	if (no_damage_count < DEFAULT_NO_DAMAGE_TIME) {
@@ -536,11 +543,15 @@ void Game::Player::cPlayer::draw()
 		}
 	}
 
+	// ////////////まとめておいたIDを使ってライトを反映させる。
+	cShaderManager::getInstance()->uniformUpdate(pointLightIds, lineLightIds, spotLightIds);
+
+	ci::gl::pushModelView();
+
 	// 武器の描画
 	{
 		ci::gl::pushModelView( );
-		ci::gl::setModelMatrix( getWorldMatrixWeapon( ) );
-		main_weapon->draw( );
+		main_weapon->draw(getWorldMatrixWeapon());
 		ci::gl::popModelView( );
 	}
 
